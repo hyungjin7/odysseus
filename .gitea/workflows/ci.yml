@@ -2,7 +2,7 @@ name: odysseus CI/CD
 
 # Gitea main push → odysseus 이미지를 빌드해 k3s odysseus 네임스페이스에 배포한다(odysseus.delvrio.com).
 # 구성은 hyungjin7/tnc-crm·slp·iii 와 같다(같은 러너·레지스트리·kubeconfig). upstream 의 .github/workflows 는 건드리지 않는다.
-# GitHub dev → Gitea main 동기화는 .github/workflows/sync-to-gitea.yml.
+# GitHub main → Gitea main 동기화는 .github/workflows/sync-to-gitea.yml.
 #
 # 이미지 태그: 매니페스트는 :latest, CI 는 방금 빌드한 :<sha> 로 set image 한다(태그 되커밋 없음).
 on:

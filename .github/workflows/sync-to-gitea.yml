@@ -1,6 +1,6 @@
 name: Sync to Gitea
 
-# GitHub dev(이 포크의 기본 브랜치) 에 push 되면 Gitea main 으로 넘긴다. Gitea push 가 Gitea CI(.gitea/workflows/ci.yml, 빌드/배포)를 깨운다.
+# GitHub main(원본 main 을 따라가는 배포 브랜치) 에 push 되면 Gitea main 으로 넘긴다. Gitea push 가 Gitea CI(.gitea/workflows/ci.yml, 빌드/배포)를 깨운다.
 # 이 포크에서만 돈다(upstream odysseus-dev/odysseus 에서는 건너뛴다).
 # force push 는 하지 않는다. Gitea main 이 앞서 있으면(예: Gitea CI 의 매니페스트 태그 커밋)
 # 그 커밋을 먼저 merge 한 뒤 push 한다.
@@ -8,7 +8,7 @@ name: Sync to Gitea
 # 그 밖의 파일이 충돌하면 실패하므로 사람이 해결한다.
 on:
   push:
-    branches: [dev]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -6,11 +6,11 @@ upstream 코드는 고치지 않으므로 GitHub "Sync fork" 로 upstream 을 �
 
 ## 흐름
 
-GitHub `dev`(이 포크의 기본 브랜치) push → `Sync to Gitea` → Gitea `hyungjin7/odysseus` main
+GitHub `main`(원본 main 을 따라가는 배포 브랜치, 포크 기본 브랜치) push → `Sync to Gitea` → Gitea `hyungjin7/odysseus` main
 → Gitea CI: 이미지 `gitea.delvrio.com/hyungjin7/odysseus/app:<sha>` 빌드 → `kubectl apply` + `set image -n odysseus`.
 
-원본 따라가기: `.github/workflows/sync-upstream.yml` 이 매주 일요일 12:00(KST) 원본 `odysseus-dev/odysseus` dev 를
-이 포크 dev 로 합치고 `Sync to Gitea` 를 실행한다(= 매주 자동 업데이트·재배포). 원본이 워크플로 파일을 바꾼 주에도
+원본 따라가기: `.github/workflows/sync-upstream.yml` 이 매주 일요일 12:00(KST) 원본 `odysseus-dev/odysseus` main(안정 브랜치)을
+이 포크 main 으로 합치고 `Sync to Gitea` 를 실행한다(= 매주 자동 업데이트·재배포). 원본이 워크플로 파일을 바꾼 주에도
 가져오려면 Actions 시크릿 `UPSTREAM_SYNC_TOKEN`(repo·workflow 권한 PAT)을 넣는다. 수동 실행은 Actions › Sync upstream › Run workflow.
 
 ## 구성
