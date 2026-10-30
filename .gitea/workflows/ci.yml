@@ -38,7 +38,11 @@ jobs:
           echo "변경 파일:"; echo "$DIFF"
           # 배포 설정·문서·GitHub 워크플로만 바뀌었으면 이미지는 다시 만들지 않는다
           CODE=$(echo "$DIFF" | grep -vE '^(deploy/k3s/|\.gitea/|\.github/|docs/|website/|plans/|specs/)|\.md$' || true)
-          if [ "${{ gitea.event_name }}" = "workflow_dispatch" ] || [ -n "$CODE" ]; then
+          # 레지스트리에 이미지가 아직 없으면(첫 배포 등) 코드 변경이 없어도 빌드한다
+          HAS_IMAGE=true
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/app:latest" >/dev/null 2>&1 || HAS_IMAGE=false
+          echo "레지스트리 app:latest 있음: $HAS_IMAGE"
+          if [ "${{ gitea.event_name }}" = "workflow_dispatch" ] || [ -n "$CODE" ] || [ "$HAS_IMAGE" = "false" ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
             echo "이미지 빌드: 예"
           else
