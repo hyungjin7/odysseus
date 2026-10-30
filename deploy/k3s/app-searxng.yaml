@@ -65,13 +65,14 @@ spec:
           mountPath: /tmp/migrate-searxng-settings.py
           subPath: migrate_searxng_settings.py
           readOnly: true
+        # 사용자 지시(2026-10-30): 2 CPU / 4Gi 로 증설. 평소 사용량은 적어 requests 는 낮게 두어 스케줄 여유를 남긴다.
         resources:
           requests:
-            cpu: 50m
-            memory: 128Mi
+            cpu: 500m
+            memory: 1Gi
           limits:
-            cpu: "1"
-            memory: 512Mi
+            cpu: "2"
+            memory: 4Gi
         readinessProbe:
           httpGet:
             path: /
