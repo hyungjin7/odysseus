@@ -7,9 +7,12 @@ metadata:
   namespace: odysseus
 data:
   TZ: Asia/Seoul
-  # 로그인 — 공통 로그인(SSO, middleware-sso.yaml) 뒤에서도 odysseus 자체 로그인은 켠다(문 두 개)
-  AUTH_ENABLED: "true"
-  # 프록시 뒤라 모든 요청이 내부 주소에서 온다 — 켜면 로그인 없이 통과되므로 반드시 false
+  # 로그인 — 공통 로그인(SSO, middleware-sso.yaml) 한 번만 쓴다(사용자 결정 2026-10-30).
+  # odysseus 자체 로그인을 끄면 SSO 를 통과한 사람은 모두 한 사용자(관리자)로 같은 공간을 쓴다.
+  # 출입은 bbb navigation_apps odysseus 그룹으로만 막고, 클러스터 안 직접 접근은 networkpolicy.yaml 이 막는다.
+  # 사람마다 공간을 나누려면 "true" 로 되돌린다(관리자 계정 = ODYSSEUS_ADMIN_USER/odysseus-secret).
+  AUTH_ENABLED: "false"
+  # 프록시 뒤라 모든 요청이 내부 주소에서 온다 — 자체 로그인을 다시 켤 때 로그인 없이 통과되지 않게 false
   LOCALHOST_BYPASS: "false"
   ODYSSEUS_ADMIN_USER: admin
   ALLOWED_ORIGINS: https://odysseus.delvrio.com

@@ -40,6 +40,13 @@ GitHub `main`(원본 main 을 따라가는 배포 브랜치, 포크 기본 브�
 5. **공통 로그인**: bbb 저장소의 `odysseus-auth-ingress.yaml`·navigation_apps `odysseus` 행이 배포돼 있어야 한다.
    사용할 사람은 bbb Admin › 그룹에 `odysseus` 그룹을 만들고 넣는다(superuser 는 항상 통과).
 
+## 로그인
+
+공통 로그인(SSO) 한 번만 쓴다. bbb·i3·slp·crm 어디서든 로그인했으면 odysseus 는 로그인 화면 없이 열린다.
+odysseus 자체 로그인은 껐다(`AUTH_ENABLED=false`) — 들어온 사람은 모두 한 사용자(관리자)로 같은 대화·설정을 쓴다.
+그래서 출입 권한(`odysseus` 그룹)을 신중히 주고, 다른 네임스페이스에서 본체로 바로 들어오는 길은 NetworkPolicy `odysseus-ingress` 가 막는다.
+사람마다 공간을 나누려면 `AUTH_ENABLED=true` 로 되돌린다(관리자 = `admin` / `odysseus-secret` 의 `ODYSSEUS_ADMIN_PASSWORD`, 8자 이상, 첫 기동 때 한 번만 만들어짐).
+
 ## LLM 연결 (LM Studio)
 
 - 주소 `http://studio.delvrio.com:1234/v1`(OpenAI 호환). Pod 에서는 `hostAliases` 로 112.150.97.248 에 붙는다(bbb 서비스와 같음).
@@ -53,7 +60,7 @@ GitHub `main`(원본 main 을 따라가는 배포 브랜치, 포크 기본 브�
 - `enableServiceLinks: false` — `chromadb` Service 가 `CHROMADB_PORT=tcp://…` 를 주입하면 본체가 죽는다(`int()` 실패).
 - `depends_on`(searxng healthy) 대신 initContainer 로 searxng 를 기다린다.
 - `host.docker.internal`·호스트 docker 소켓은 쓰지 않는다.
-- Ingress + 공통 로그인(forwardAuth), NetworkPolicy(본체가 사설 IP 대역으로 못 나가게) 추가.
+- Ingress + 공통 로그인(forwardAuth), NetworkPolicy(본체가 사설 IP 대역으로 못 나가게, Traefik 외 직접 접근 차단) 추가.
 
 ## 주의
 
