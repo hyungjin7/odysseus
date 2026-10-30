@@ -1,0 +1,59 @@
+# ntfy(알림, :80) — 선택 구성요소. 지금은 클러스터 안에서만 쓴다(휴대폰 구독용 외부 도메인 없음).
+# 캐시(/var/cache/ntfy)는 휘발성(emptyDir).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ntfy
+  namespace: odysseus
+  labels:
+    app: ntfy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ntfy
+  template:
+    metadata:
+      labels:
+        app: ntfy
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: ntfy
+        image: docker.io/binwiederhier/ntfy:v2.32.0@sha256:59250e1d8be2ee2186c4560322f625faef22ace380331f05b63f8842dbd62602
+        args: ["serve"]
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: NTFY_BASE_URL
+          value: http://ntfy.odysseus.svc.cluster.local
+        volumeMounts:
+        - name: cache
+          mountPath: /var/cache/ntfy
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+      volumes:
+      - name: cache
+        emptyDir:
+          sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ntfy
+  namespace: odysseus
+spec:
+  type: ClusterIP
+  selector:
+    app: ntfy
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http

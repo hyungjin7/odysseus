@@ -1,0 +1,48 @@
+name: Sync upstream
+
+# 매주 일요일 12:00(KST) 원본 odysseus-dev/odysseus 의 main(안정 브랜치)을 이 포크의 main 으로 가져온다(GitHub "Sync fork" 와 같다).
+# 가져온 뒤 Sync to Gitea 를 실행해 Gitea main → Gitea CI 로 배포까지 이어진다.
+# 원본 dev 는 최신이지만 불안정해서 운영 배포는 main 을 따른다(사용자 결정 2026-10-30).
+# 예약 실행(schedule)은 저장소 기본 브랜치에 있는 워크플로만 돌므로 포크 기본 브랜치를 main 으로 둔다.
+# 이 포크는 파일만 더했으므로(deploy/k3s, .gitea, sync 워크플로) 보통 충돌이 없다. 충돌하면 실패로 끝나니 사람이 푼다.
+#
+# 토큰: 원본이 .github/workflows 를 바꾼 주에는 기본 GITHUB_TOKEN 으로 가져올 수 없다(workflow 권한 없음).
+# 그래서 저장소 시크릿 UPSTREAM_SYNC_TOKEN(repo·workflow 권한 PAT)이 있으면 그것을 쓴다.
+on:
+  schedule:
+    # GitHub cron 은 UTC — 일요일 03:00 UTC = 일요일 12:00 KST (GitHub 사정으로 몇 분 늦을 수 있다)
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'hyungjin7/odysseus'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge upstream main
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # 원본 main 을 포크 main 에 합친다. 충돌(409)·workflow 권한 부족(422 등)이면 실패한다.
+          result=$(gh api -X POST "repos/${REPO}/merge-upstream" -f branch=main)
+          echo "$result"
+          echo "merge_type=$(echo "$result" | jq -r '.merge_type')"
+
+      - name: Run Sync to Gitea
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # GITHUB_TOKEN 으로 한 push 는 다른 워크플로를 깨우지 않으므로 직접 실행한다(바뀐 게 없으면 Gitea 에 올릴 것도 없다)
+          gh workflow run sync-to-gitea.yml --repo "$REPO" --ref main

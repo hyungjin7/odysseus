@@ -1,0 +1,28 @@
+# odysseus 본체 설정(비밀이 아닌 값). 비밀값은 odysseus-secret(secrets.example.yaml)에 둔다.
+# 전체 변수 목록: website/configuration-reference.md, .env.example
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: odysseus-config
+  namespace: odysseus
+data:
+  TZ: Asia/Seoul
+  # 로그인 — 공통 로그인(SSO, middleware-sso.yaml) 뒤에서도 odysseus 자체 로그인은 켠다(문 두 개)
+  AUTH_ENABLED: "true"
+  # 프록시 뒤라 모든 요청이 내부 주소에서 온다 — 켜면 로그인 없이 통과되므로 반드시 false
+  LOCALHOST_BYPASS: "false"
+  ODYSSEUS_ADMIN_USER: admin
+  ALLOWED_ORIGINS: https://odysseus.delvrio.com
+  OAUTH_REDIRECT_BASE_URL: https://odysseus.delvrio.com
+  # TLS 는 Traefik 이 끝내서 앱은 http 로 받는다 — 세션 쿠키 Secure 를 강제한다
+  SECURE_COOKIES: "true"
+  # 같은 네임스페이스의 보조 서비스
+  SEARXNG_INSTANCE: http://searxng:8080
+  CHROMADB_HOST: chromadb
+  CHROMADB_PORT: "8000"
+  # LLM — 사내 LM Studio(OpenAI 호환, http://studio.delvrio.com:1234/v1). API 키는 앱 설정 화면에서 넣는다(README).
+  LLM_HOST: studio.delvrio.com
+  LM_STUDIO_URL: http://studio.delvrio.com:1234
+  # entrypoint 가 이 uid/gid 로 내려가 /app/data 소유권을 맞춘다
+  PUID: "1000"
+  PGID: "1000"

@@ -1,0 +1,113 @@
+# odysseus 본체(FastAPI/uvicorn, :7000). 이미지는 Gitea CI 가 저장소 Dockerfile 로 빌드한다.
+# - SQLite(/app/data/app.db)라 반드시 1개만 띄우고, 업데이트는 Recreate(옛 Pod 를 끈 뒤 새 Pod)로 한다.
+# - entrypoint 가 root 로 시작해 /app/data 소유권을 맞춘 뒤 PUID(1000)로 내려간다 — runAsNonRoot 를 걸지 않는다.
+# - enableServiceLinks: false — 같은 네임스페이스의 chromadb Service 때문에 CHROMADB_PORT=tcp://… 가 주입되면 앱이 죽는다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: odysseus
+  namespace: odysseus
+  labels:
+    app: odysseus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: odysseus
+  template:
+    metadata:
+      labels:
+        app: odysseus
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+      - name: gitea-registry-auth
+      # 사내 LM Studio — bbb 서비스들과 같은 주소(bbb infra/k8s/v1.0/app-news.yaml 등)
+      hostAliases:
+      - ip: "112.150.97.248"
+        hostnames:
+        - "studio.delvrio.com"
+      initContainers:
+      # compose 의 depends_on(searxng healthy) 대신 — searxng 가 응답할 때까지 기다린다
+      - name: wait-searxng
+        image: busybox:1.37
+        command: ["sh", "-c", "until wget -q -T 3 -O /dev/null http://searxng:8080/; do echo 'searxng 대기'; sleep 3; done"]
+      containers:
+      - name: odysseus
+        image: gitea.delvrio.com/hyungjin7/odysseus/app:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 7000
+          name: http
+        envFrom:
+        - configMapRef:
+            name: odysseus-config
+        - secretRef:
+            name: odysseus-secret
+            optional: true
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+          subPath: data
+        - name: data
+          mountPath: /app/.ssh
+          subPath: data/ssh
+        - name: data
+          mountPath: /app/.cache/huggingface
+          subPath: data/huggingface
+        - name: data
+          mountPath: /app/.local
+          subPath: data/local
+        - name: logs
+          mountPath: /app/logs
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+        # 첫 기동은 setup.py·소유권 정리로 느리다 — 최대 10분 기다린다
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: 7000
+          periodSeconds: 10
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 7000
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 7000
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 5
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: odysseus-data
+      # 휘발성: 로그는 노드 로컬 디스크(재시작하면 비워진다)
+      - name: logs
+        emptyDir:
+          sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: odysseus
+  namespace: odysseus
+spec:
+  type: ClusterIP
+  selector:
+    app: odysseus
+  ports:
+  - port: 7000
+    targetPort: 7000
+    protocol: TCP
+    name: http

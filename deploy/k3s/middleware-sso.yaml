@@ -1,0 +1,17 @@
+# delvrio 공통 로그인(SSO) 문지기 — tnc-crm 과 같은 방식.
+# Traefik 이 모든 요청마다 bbb dcore 에 "이 쿠키(dlv_sso) 주인 들어와도 돼?"를 묻는다(bbb apps/accounts/sso.py forward_auth).
+# - 로그인 안 됨: 화면은 odysseus.delvrio.com/admin/login/ 으로, /api 는 401
+# - 권한 없음: 403 — 사용 권한 = bbb navigation_apps 의 odysseus 행(required_group odysseus, superuser 는 항상)
+# /admin(로그인 화면)은 bbb 저장소 infra/k8s/v1.0/odysseus-auth-ingress.yaml 이 dcore 로 보낸다.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: odysseus-sso
+  namespace: odysseus
+spec:
+  forwardAuth:
+    address: http://core-service.bbb-namespace.svc.cluster.local:8000/api/core/auth/forward/
+    authResponseHeaders:
+    - X-Auth-User
+    - X-Auth-Username
+    - X-Auth-Email

@@ -1,0 +1,109 @@
+# searxng(웹 검색, :8080) — docker-compose.yml 의 시작 스크립트를 그대로 옮겼다.
+# 설정 템플릿(config/searxng/settings.yml)과 이전 스크립트(scripts/migrate_searxng_settings.py)는
+# CI 가 저장소 파일로 ConfigMap searxng-files 를 만든다(upstream 이 바꾸면 따라간다).
+# /etc/searxng 는 휘발성(emptyDir) — 기동할 때마다 템플릿 + SEARXNG_SECRET 으로 settings.yml 을 새로 만든다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: searxng
+  namespace: odysseus
+  labels:
+    app: searxng
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: searxng
+  template:
+    metadata:
+      labels:
+        app: searxng
+    spec:
+      # SEARXNG_PORT=tcp://… 같은 Service 환경변수가 searxng 설정을 덮지 않게 한다
+      enableServiceLinks: false
+      containers:
+      - name: searxng
+        image: docker.io/searxng/searxng:2026.10.24-ef0ec03da@sha256:7c7cbe509429e82755104b2a95f52085a98633c95d53f44e4e905fa3a59f08c8
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+          if [ ! -s /etc/searxng/settings.yml ] || grep -q 'odysseus-local-searxng-json-2026-05-30\|__SEARXNG_SECRET__' /etc/searxng/settings.yml; then
+            secret="${SEARXNG_SECRET:-}"
+            if [ -z "$secret" ]; then
+              secret="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+            fi
+            sed "s|__SEARXNG_SECRET__|$secret|g" /tmp/searxng-settings.yml.template > /etc/searxng/settings.yml
+          fi
+          /usr/local/searxng/.venv/bin/python /tmp/migrate-searxng-settings.py /etc/searxng/settings.yml || true
+          exec /usr/local/searxng/entrypoint.sh
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: SEARXNG_BASE_URL
+          value: http://searxng:8080/
+        - name: SEARXNG_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: odysseus-secret
+              key: SEARXNG_SECRET
+              optional: true
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+            add: ["CHOWN", "SETGID", "SETUID", "DAC_OVERRIDE"]
+        volumeMounts:
+        - name: etc
+          mountPath: /etc/searxng
+        - name: files
+          mountPath: /tmp/searxng-settings.yml.template
+          subPath: settings.yml
+          readOnly: true
+        - name: files
+          mountPath: /tmp/migrate-searxng-settings.py
+          subPath: migrate_searxng_settings.py
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 6
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 6
+      volumes:
+      - name: etc
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: files
+        configMap:
+          name: searxng-files
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: searxng
+  namespace: odysseus
+spec:
+  type: ClusterIP
+  selector:
+    app: searxng
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
