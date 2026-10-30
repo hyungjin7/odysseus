@@ -1,0 +1,63 @@
+# chromadb(벡터 DB, :8000) — docker-compose.yml 과 같은 이미지(digest 고정). 저장은 nfs-hdd PVC chromadb-data(/data).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chromadb
+  namespace: odysseus
+  labels:
+    app: chromadb
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: chromadb
+  template:
+    metadata:
+      labels:
+        app: chromadb
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: chromadb
+        image: docker.io/chromadb/chroma:1.5.9@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: ANONYMIZED_TELEMETRY
+          value: "FALSE"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+        readinessProbe:
+          tcpSocket:
+            port: 8000
+          periodSeconds: 10
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: chromadb-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chromadb
+  namespace: odysseus
+spec:
+  type: ClusterIP
+  selector:
+    app: chromadb
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http

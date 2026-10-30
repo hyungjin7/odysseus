@@ -1,0 +1,37 @@
+# odysseus 본체가 나갈 수 있는 곳을 제한한다.
+# 컨테이너 안에 nmap·ssh·Chromium 이 있고 AI 에이전트가 명령을 실행할 수 있어서,
+# 내부망(사설 IP: 노드·집 LAN·다른 네임스페이스 Pod/Service)으로는 못 가게 막는다.
+# 허용: 클러스터 DNS, 같은 네임스페이스(chromadb·searxng·ntfy), 인터넷(공인 IP — LM Studio 112.150.97.248 포함).
+# 들어오는 쪽(ingress)은 제한하지 않는다(Traefik·kubelet probe 가 막히지 않게). k3s 는 kube-router 로 NetworkPolicy 를 집행한다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: odysseus-egress
+  namespace: odysseus
+spec:
+  podSelector:
+    matchLabels:
+      app: odysseus
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  - to:
+    - podSelector: {}
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+        - 100.64.0.0/10
+        - 169.254.0.0/16

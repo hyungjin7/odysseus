@@ -1,0 +1,75 @@
+name: Sync to Gitea
+
+# GitHub dev(이 포크의 기본 브랜치) 에 push 되면 Gitea main 으로 넘긴다. Gitea push 가 Gitea CI(.gitea/workflows/ci.yml, 빌드/배포)를 깨운다.
+# 이 포크에서만 돈다(upstream odysseus-dev/odysseus 에서는 건너뛴다).
+# force push 는 하지 않는다. Gitea main 이 앞서 있으면(예: Gitea CI 의 매니페스트 태그 커밋)
+# 그 커밋을 먼저 merge 한 뒤 push 한다.
+# 매니페스트(deploy/k3s/app-*.yaml) 충돌은 자동으로 푼다: 내용은 GitHub 쪽, 이미지 태그는 Gitea 쪽(배포된 태그).
+# 그 밖의 파일이 충돌하면 실패하므로 사람이 해결한다.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-to-gitea
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'hyungjin7/odysseus'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Push to Gitea main
+        env:
+          GITEA_USER: ${{ secrets.GITEA_USER }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITEA_USER}" ] || [ -z "${GITEA_TOKEN}" ]; then
+            echo "::error::GITEA_USER / GITEA_TOKEN secret 이 없습니다"; exit 1
+          fi
+          AUTH=$(printf '%s:%s' "$GITEA_USER" "$GITEA_TOKEN" | base64 -w0)
+          echo "::add-mask::$AUTH"
+          GITEA_URL=https://gitea.delvrio.com/hyungjin7/odysseus.git
+          GIT_AUTH=(-c "http.extraheader=Authorization: Basic $AUTH")
+          # 인증/통신/객체 오류를 빈 저장소로 오인하지 않는다.
+          # ls-remote --exit-code 의 2만 main 부재를 뜻한다.
+          remote_status=0
+          git "${GIT_AUTH[@]}" ls-remote --exit-code "$GITEA_URL" refs/heads/main > /tmp/gitea-main-ref || remote_status=$?
+          if [ "$remote_status" -eq 0 ]; then
+            git "${GIT_AUTH[@]}" fetch "$GITEA_URL" main
+            if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+              git config user.name "github-actions"
+              git config user.email "github-actions@users.noreply.github.com"
+              if ! git merge --no-edit FETCH_HEAD; then
+                for f in $(git diff --name-only --diff-filter=U); do
+                  case "$f" in
+                    deploy/k3s/app-*.yaml) ;;
+                    *) echo "::error::자동으로 풀 수 없는 충돌: $f"; exit 1 ;;
+                  esac
+                  git checkout --ours -- "$f"
+                  for img in $(git show "FETCH_HEAD:$f" | grep -oE 'gitea\.delvrio\.com/hyungjin7/odysseus/[a-z0-9-]+:[A-Za-z0-9._-]+' | sort -u); do
+                    sed -i -E "s#${img%%:*}:[A-Za-z0-9._-]+#${img}#g" "$f"
+                  done
+                  git add "$f"
+                  echo "충돌 자동 해결(내용=GitHub, 이미지 태그=Gitea): $f"
+                done
+                git commit --no-edit
+              fi
+            fi
+          elif [ "$remote_status" -eq 2 ]; then
+            echo "Gitea main 이 아직 없음 — 최초 push"
+          else
+            echo "::error::Gitea main 조회 실패 (exit=$remote_status). 인증·통신·저장소 상태를 확인하세요."
+            exit "$remote_status"
+          fi
+          git "${GIT_AUTH[@]}" push "$GITEA_URL" HEAD:refs/heads/main
