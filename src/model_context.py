@@ -446,7 +446,7 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
         return DEFAULT_CONTEXT, False
 
     # Try llama.cpp /slots endpoint first — reports actual serving context
-    if is_local_endpoint(endpoint_url) and _host_recently_unreachable(endpoint_url):
+    if _host_recently_unreachable(endpoint_url):
         logger.debug(f"Skipping context probe for unreachable endpoint {endpoint_url}")
         return (known, True) if known else (DEFAULT_CONTEXT, False)
     if is_local_endpoint(endpoint_url):
@@ -506,6 +506,9 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
                 if mid == model or mid.split("/")[-1] == model.split("/")[-1]:
                     api_ctx = _model_ctx_from_entry(m)
                     break
+    except (httpx.TimeoutException, httpx.ConnectError) as e:
+        _mark_host_unreachable(endpoint_url)
+        logger.info(f"Context probe failed for {endpoint_url} ({e!r}); skipping it for {UNREACHABLE_RETRY_SECONDS}s")
     except Exception as e:
         logger.debug(f"Failed to query context length for {model}: {e}")
 
