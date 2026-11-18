@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import httpx
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,28 @@ def is_local_endpoint(url: str) -> bool:
 # ---------------------------------------------------------------------------
 DEFAULT_CONTEXT = 128000
 REQUEST_TIMEOUT = 5
+# A local endpoint that timed out / refused is skipped for this long, so a dead
+# or firewalled LLM host costs one probe timeout per window instead of three
+# sequential 5s probes (/slots, /props, /models) on every context lookup.
+UNREACHABLE_RETRY_SECONDS = 60
+_unreachable_until: Dict[str, float] = {}
+
+
+def _probe_host_key(url: str) -> str:
+    try:
+        parsed = urlparse(url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+    except Exception:
+        return url
+
+
+def _host_recently_unreachable(url: str) -> bool:
+    until = _unreachable_until.get(_probe_host_key(url))
+    return bool(until and until > time.monotonic())
+
+
+def _mark_host_unreachable(url: str) -> None:
+    _unreachable_until[_probe_host_key(url)] = time.monotonic() + UNREACHABLE_RETRY_SECONDS
 
 # Known context windows for major API models (used as fallback when /models
 # endpoint doesn't report context_length).
@@ -423,6 +446,9 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
         return DEFAULT_CONTEXT, False
 
     # Try llama.cpp /slots endpoint first — reports actual serving context
+    if is_local_endpoint(endpoint_url) and _host_recently_unreachable(endpoint_url):
+        logger.debug(f"Skipping context probe for unreachable endpoint {endpoint_url}")
+        return (known, True) if known else (DEFAULT_CONTEXT, False)
     if is_local_endpoint(endpoint_url):
         base = endpoint_url.split("/v1")[0] if "/v1" in endpoint_url else endpoint_url.rsplit("/", 1)[0]
         try:
@@ -434,6 +460,10 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
                     if n_ctx and isinstance(n_ctx, int) and n_ctx > 0:
                         logger.info(f"llama.cpp /slots reports n_ctx={n_ctx} for {model}")
                         return n_ctx, True
+        except (httpx.TimeoutException, httpx.ConnectError):
+            _mark_host_unreachable(endpoint_url)
+            logger.info(f"Context probe timed out for {endpoint_url}; skipping it for {UNREACHABLE_RETRY_SECONDS}s")
+            return (known, True) if known else (DEFAULT_CONTEXT, False)
         except Exception:
             pass
         # llama-server only exposes /slots when started with --slots. Its

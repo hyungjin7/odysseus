@@ -1,5 +1,6 @@
 """History routes — session history, truncation, fork, conversation topics."""
 
+import asyncio
 import json
 import os
 import uuid
@@ -908,7 +909,14 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
 
             messages = session.get_context_messages()
             used = int(estimate_tokens(messages))
-            ctx_len = int(get_context_length(session.endpoint_url, session.model) or 0)
+            # get_context_length may probe the model server over the network
+            # (sync httpx, up to 5s per probe). Run it off the event loop so a
+            # slow or unreachable LLM host can't stall every other request
+            # (e.g. /api/history waited 15s behind this call).
+            ctx_len = int(
+                await asyncio.to_thread(get_context_length, session.endpoint_url, session.model)
+                or 0
+            )
             thinking_supported = supports_user_thinking_toggle(session.model)
             pct = round((used / ctx_len) * 100, 1) if ctx_len else 0.0
             pct = max(0.0, min(100.0, pct))
